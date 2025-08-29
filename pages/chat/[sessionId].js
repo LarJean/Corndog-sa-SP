@@ -21,18 +21,26 @@ export default function ChatSession() {
         .eq("session_id", sessionId)
         .order("created_at", { ascending: true });
 
-      if (error) console.error("Error fetching messages:", error);
-      else setMessages(data);
+      if (error) {
+        console.error("Error fetching messages:", error);
+      } else {
+        setMessages(data);
+      }
     };
 
     loadMessages();
 
-    // Subscribe to realtime messages
+    // Realtime subscription (new messages)
     const channel = supabase
       .channel("messages-channel")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages", filter: `session_id=eq.${sessionId}` },
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `session_id=eq.${sessionId}`,
+        },
         (payload) => {
           console.log("New message received:", payload.new);
           setMessages((prev) => [...prev, payload.new]);
@@ -40,7 +48,7 @@ export default function ChatSession() {
       )
       .subscribe();
 
-    // cleanup when leaving page
+    // Cleanup on unmount
     return () => {
       supabase.removeChannel(channel);
     };
@@ -57,8 +65,11 @@ export default function ChatSession() {
       },
     ]);
 
-    if (error) console.error("Error sending message:", error);
-    setNewMessage(""); // clear input
+    if (error) {
+      console.error("Error sending message:", error);
+    } else {
+      setNewMessage(""); // clear input only if sent successfully
+    }
   };
 
   return (
@@ -71,7 +82,7 @@ export default function ChatSession() {
             <p className="text-gray-500">No messages yet...</p>
           ) : (
             messages.map((msg) => (
-              <p key={msg.id} className="mb-2">
+              <p key={msg.id} className="mb-2 border-b pb-1">
                 {msg.content}
               </p>
             ))
