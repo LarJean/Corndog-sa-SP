@@ -52,12 +52,13 @@ export default function ChatPage() {
   }, [sessionId]);
 
   const sendMessage = async () => {
-    if (!input.trim()) return;
-    await supabase.from("messages").insert([
-      { session_id: sessionId, content: input },
-    ]);
-    setInput("");
-  };
+  if (!input.trim()) return;
+  const { data, error } = await supabase.from("messages").insert([
+    { session_id: sessionId, content: input }
+  ]);
+  console.log("Insert result:", { data, error });
+  setInput("");
+};
 
   return (
     <div>
