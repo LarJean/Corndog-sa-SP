@@ -1,69 +1,35 @@
-import { useState, useEffect } from "react";
-import { supabase } from "../lib/supabaseClient";
 import { useRouter } from "next/router";
+import { useState } from "react";
 
-export default function Home() {
-  const [sessions, setSessions] = useState([]);
-  const [newSession, setNewSession] = useState("");
+export default function IndexPage() {
   const router = useRouter();
+  const [name, setName] = useState("");
 
-  useEffect(() => {
-    const fetchSessions = async () => {
-      const { data, error } = await supabase.from("sessions").select("*");
-      if (!error) setSessions(data);
-    };
-    fetchSessions();
-  }, []);
-
-  const createSession = async () => {
-    if (!newSession.trim()) return;
-    const { data, error } = await supabase
-      .from("sessions")
-      .insert([{ name: newSession }])
-      .select()
-      .single();
-    if (!error) {
-      setSessions([...sessions, data]);
-      setNewSession("");
-    }
+  const handleStart = () => {
+    if (!name.trim()) return alert("Enter your name first!");
+    // Fixed session for 2 people
+    router.push(`/chat/main?name=${encodeURIComponent(name)}`);
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-6">
-      <h1 className="text-2xl font-bold mb-6">💬 Chat Sessions</h1>
-
-      <div className="w-full max-w-md bg-white shadow rounded p-4">
-        <div className="flex space-x-2 mb-4">
-          <input
-            type="text"
-            value={newSession}
-            onChange={(e) => setNewSession(e.target.value)}
-            className="flex-1 border rounded px-2 py-1"
-            placeholder="New session name..."
-          />
-          <button
-            onClick={createSession}
-            className="px-4 py-2 bg-blue-500 text-white rounded"
-          >
-            Create
-          </button>
-        </div>
-
-        {sessions.length === 0 ? (
-          <p className="text-gray-500">No sessions yet...</p>
-        ) : (
-          <ul>
-            {sessions.map((s) => (
-              <li
-                key={s.id}
-                className="p-2 border-b cursor-pointer hover:bg-gray-50"
-                onClick={() => router.push(`/session/${s.id}`)}
-              >
-                {s.name}
-              </li>
-            ))}
-          </ul>
-        )}
+    <div className="h-screen flex items-center justify-center bg-gradient-to-r from-blue-500 to-indigo-600">
+      <div className="bg-white rounded-2xl shadow-lg p-10 w-96 text-center">
+        <h1 className="text-2xl font-bold text-gray-800 mb-6">
+          Welcome to Chat 💬
+        </h1>
+        <input
+          type="text"
+          placeholder="Enter your name..."
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="w-full px-4 py-2 border rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        />
+        <button
+          onClick={handleStart}
+          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg transition"
+        >
+          Start Chat
+        </button>
       </div>
     </div>
   );
