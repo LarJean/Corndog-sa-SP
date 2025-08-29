@@ -1,36 +1,42 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
 
 export default function ChatSession() {
   const router = useRouter();
-  const { sessionId } = router.query;
-
+  const { sessionId, name } = router.query;
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
+  const messagesEndRef = useRef(null);
 
-  // Load messages + subscribe realtime
+  // Scroll to bottom
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(scrollToBottom, [messages]);
+
+  // Fetch + subscribe
   useEffect(() => {
     if (!sessionId) return;
 
-    const loadMessages = async () => {
-      const { data, error } = await supabase
+    const fetchMessages = async () => {
+      const { data } = await supabase
         .from("messages")
         .select("*")
         .eq("session_id", sessionId)
         .order("created_at", { ascending: true });
-      if (!error) setMessages(data);
+      setMessages(data || []);
     };
-    loadMessages();
+    fetchMessages();
 
-    // Subscribe to realtime updates
     const channel = supabase
-      .channel("realtime:messages")
+      .channel("room-messages")
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages" },
         (payload) => {
-          if (payload.new.session_id === parseInt(sessionId)) {
+          if (payload.new.session_id === sessionId) {
             setMessages((prev) => [...prev, payload.new]);
           }
         }
@@ -44,47 +50,65 @@ export default function ChatSession() {
 
   const sendMessage = async () => {
     if (!newMessage.trim()) return;
+
     await supabase.from("messages").insert([
       {
         session_id: sessionId,
+        sender: name || "Anonymous",
         content: newMessage,
       },
     ]);
+
     setNewMessage("");
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-6">
-      <h1 className="text-xl font-bold mb-4">Chat Session {sessionId}</h1>
+    <div className="h-screen flex flex-col bg-gray-100">
+      {/* Header */}
+      <div className="bg-indigo-600 text-white p-4 text-lg font-semibold shadow">
+        Chat Room: {sessionId}
+      </div>
 
-      <div className="w-full max-w-md bg-white shadow rounded p-4 flex flex-col">
-        <div className="flex-1 overflow-y-auto mb-4 border rounded p-2">
-          {messages.length === 0 ? (
-            <p className="text-gray-500">No messages yet...</p>
-          ) : (
-            messages.map((msg) => (
-              <p key={msg.id} className="mb-2">
-                {msg.content}
-              </p>
-            ))
-          )}
-        </div>
-
-        <div className="flex space-x-2">
-          <input
-            type="text"
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            className="flex-1 border rounded px-2 py-1"
-            placeholder="Type a message..."
-          />
-          <button
-            onClick={sendMessage}
-            className="px-4 py-2 bg-blue-500 text-white rounded"
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            className={`flex ${
+              msg.sender === name ? "justify-end" : "justify-start"
+            }`}
           >
-            Send
-          </button>
-        </div>
+            <div
+              className={`px-4 py-2 rounded-2xl max-w-xs shadow ${
+                msg.sender === name
+                  ? "bg-indigo-600 text-white"
+                  : "bg-white text-gray-800"
+              }`}
+            >
+              <p className="text-sm font-semibold">{msg.sender}</p>
+              <p>{msg.content}</p>
+            </div>
+          </div>
+        ))}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input */}
+      <div className="p-4 bg-white border-t flex items-center space-x-2">
+        <input
+          type="text"
+          placeholder="Type a message..."
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+          className="flex-1 px-4 py-2 border rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+        />
+        <button
+          onClick={sendMessage}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-full font-semibold transition"
+        >
+          Send
+        </button>
       </div>
     </div>
   );
