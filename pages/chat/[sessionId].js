@@ -1,17 +1,19 @@
+import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
-import { useEffect, useState } from "react";
 
 export default function ChatSession() {
   const router = useRouter();
   const { sessionId } = router.query;
+
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
 
-  // Load existing messages
+  // Load existing messages + subscribe to realtime updates
   useEffect(() => {
     if (!sessionId) return;
 
+    // Fetch old messages
     const loadMessages = async () => {
       const { data, error } = await supabase
         .from("messages")
@@ -19,26 +21,18 @@ export default function ChatSession() {
         .eq("session_id", sessionId)
         .order("created_at", { ascending: true });
 
-      if (!error) setMessages(data);
+      if (error) console.error("Error fetching messages:", error);
+      else setMessages(data);
     };
 
     loadMessages();
-  }, [sessionId]);
 
-  // Subscribe to new messages in realtime
-  useEffect(() => {
-    if (!sessionId) return;
-
+    // Subscribe to realtime messages
     const channel = supabase
-      .channel(`messages-channel-${sessionId}`)
+      .channel("messages-channel")
       .on(
         "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `session_id=eq.${sessionId}`,
-        },
+        { event: "INSERT", schema: "public", table: "messages", filter: `session_id=eq.${sessionId}` },
         (payload) => {
           console.log("New message received:", payload.new);
           setMessages((prev) => [...prev, payload.new]);
@@ -46,46 +40,60 @@ export default function ChatSession() {
       )
       .subscribe();
 
+    // cleanup when leaving page
     return () => {
       supabase.removeChannel(channel);
     };
   }, [sessionId]);
 
+  // Send message
   const sendMessage = async () => {
     if (!newMessage.trim()) return;
 
-    await supabase.from("messages").insert([
+    const { error } = await supabase.from("messages").insert([
       {
         session_id: sessionId,
         content: newMessage,
-        created_at: new Date(),
       },
     ]);
 
-    setNewMessage("");
+    if (error) console.error("Error sending message:", error);
+    setNewMessage(""); // clear input
   };
 
   return (
-    <div style={{ padding: "20px", fontFamily: "sans-serif" }}>
-      <h1>Chat Session {sessionId}</h1>
-      <div style={{ marginBottom: "20px", maxHeight: "300px", overflowY: "auto" }}>
-        {messages.map((msg) => (
-          <p key={msg.id}>
-            <strong>{msg.id}:</strong> {msg.content}
-          </p>
-        ))}
-      </div>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+      <h1 className="text-xl font-bold mb-4">Chat Session: {sessionId}</h1>
 
-      <input
-        type="text"
-        value={newMessage}
-        onChange={(e) => setNewMessage(e.target.value)}
-        placeholder="Type a message..."
-        style={{ padding: "8px", width: "70%" }}
-      />
-      <button onClick={sendMessage} style={{ marginLeft: "10px", padding: "8px 16px" }}>
-        Send
-      </button>
+      <div className="w-full max-w-md bg-white shadow rounded p-4 flex flex-col">
+        <div className="flex-1 overflow-y-auto mb-4">
+          {messages.length === 0 ? (
+            <p className="text-gray-500">No messages yet...</p>
+          ) : (
+            messages.map((msg) => (
+              <p key={msg.id} className="mb-2">
+                {msg.content}
+              </p>
+            ))
+          )}
+        </div>
+
+        <div className="flex space-x-2">
+          <input
+            type="text"
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            className="flex-1 border rounded px-2 py-1"
+            placeholder="Type a message..."
+          />
+          <button
+            onClick={sendMessage}
+            className="px-4 py-2 bg-blue-500 text-white rounded"
+          >
+            Send
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
