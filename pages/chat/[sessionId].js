@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
 
@@ -8,37 +8,24 @@ export default function ChatSession() {
 
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
-  const messagesEndRef = useRef(null);
-
-  // Auto-scroll to bottom when new messages come
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
 
   useEffect(() => {
     if (!sessionId) return;
 
-    // Fetch old messages
-    const loadMessages = async () => {
-      const { data, error } = await supabase
+    const fetchMessages = async () => {
+      const { data } = await supabase
         .from("messages")
         .select("*")
         .eq("session_id", sessionId)
         .order("created_at", { ascending: true });
-
-      if (error) {
-        console.error("Error fetching messages:", error);
-      } else {
-        setMessages(data);
-        scrollToBottom();
-      }
+      setMessages(data || []);
     };
 
-    loadMessages();
+    fetchMessages();
 
-    // ✅ Realtime subscription for new messages
+    // ✅ Subscribe to realtime inserts
     const channel = supabase
-      .channel(`room:${sessionId}`)
+      .channel("messages-channel")
       .on(
         "postgres_changes",
         {
@@ -48,73 +35,69 @@ export default function ChatSession() {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
-          console.log("Realtime message:", payload.new);
           setMessages((prev) => [...prev, payload.new]);
-          scrollToBottom();
         }
       )
-      .subscribe((status) => {
-        console.log("Subscription status:", status);
-      });
+      .subscribe();
 
-    // Cleanup
     return () => {
       supabase.removeChannel(channel);
     };
   }, [sessionId]);
 
-  // Send message
-  const sendMessage = async () => {
+  const sendMessage = async (e) => {
+    e.preventDefault();
     if (!newMessage.trim()) return;
 
-    const { error } = await supabase.from("messages").insert([
+    await supabase.from("messages").insert([
       {
         session_id: sessionId,
         content: newMessage,
+        created_at: new Date().toISOString(),
       },
     ]);
 
-    if (error) {
-      console.error("Error sending message:", error);
-    } else {
-      setNewMessage(""); // clear input only if sent successfully
-    }
+    setNewMessage("");
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
-      <h1 className="text-xl font-bold mb-4">Chat Session: {sessionId}</h1>
-
-      <div className="w-full max-w-md bg-white shadow rounded p-4 flex flex-col">
-        <div className="flex-1 overflow-y-auto mb-4 h-80 border p-2 rounded">
-          {messages.length === 0 ? (
-            <p className="text-gray-500">No messages yet...</p>
-          ) : (
-            messages.map((msg) => (
-              <p key={msg.id} className="mb-2 border-b pb-1">
-                {msg.content}
-              </p>
-            ))
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        <div className="flex space-x-2">
-          <input
-            type="text"
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            className="flex-1 border rounded px-2 py-1"
-            placeholder="Type a message..."
-          />
-          <button
-            onClick={sendMessage}
-            className="px-4 py-2 bg-blue-500 text-white rounded"
-          >
-            Send
-          </button>
-        </div>
+    <div className="flex flex-col h-screen bg-gray-50">
+      {/* Header */}
+      <div className="p-4 bg-blue-500 text-white font-bold text-lg shadow">
+        Chat Session #{sessionId}
       </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            className="bg-white p-3 rounded-xl shadow text-gray-800"
+          >
+            {msg.content}
+          </div>
+        ))}
+      </div>
+
+      {/* Input */}
+      <form
+        onSubmit={sendMessage}
+        className="flex items-center p-3 bg-white border-t"
+      >
+        <input
+          type="text"
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+          placeholder="Type a message..."
+          className="flex-1 border rounded-lg px-4 py-2 mr-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+        />
+        <button
+          type="submit"
+          className="bg-blue-500 text-white px-4 py-2 rounded-lg shadow hover:bg-blue-600 transition"
+        >
+          Send
+        </button>
+      </form>
     </div>
   );
 }
