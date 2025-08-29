@@ -32,21 +32,23 @@ export default function ChatPage() {
     fetchMessages();
 
     // Realtime subscription
-    const channel = supabase
-      .channel("messages-channel")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `session_id=eq.${sessionId}`,
-        },
-        (payload) => {
-          setMessages((prev) => [...prev, payload.new]);
-        }
-      )
-      .subscribe();
+ const channel = supabase
+  .channel(`messages-channel-${sessionId}`) // 👈 unique channel name per session
+  .on(
+    "postgres_changes",
+    {
+      event: "INSERT",
+      schema: "public",
+      table: "messages",
+      filter: `session_id=eq.${sessionId}`, // 👈 must match inserted session_id exactly
+    },
+    (payload) => {
+      console.log("New message received:", payload.new); // Debug
+      setMessages((prev) => [...prev, payload.new]);
+    }
+  )
+  .subscribe();
+
 
     // Cleanup on unmount
     return () => {
