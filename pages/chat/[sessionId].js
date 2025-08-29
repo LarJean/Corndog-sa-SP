@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import { supabase } from "../../lib/supabaseClient";
 
@@ -8,8 +8,13 @@ export default function ChatSession() {
 
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
+  const messagesEndRef = useRef(null);
 
-  // Load existing messages + subscribe to realtime updates
+  // Auto-scroll to bottom when new messages come
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
   useEffect(() => {
     if (!sessionId) return;
 
@@ -25,14 +30,15 @@ export default function ChatSession() {
         console.error("Error fetching messages:", error);
       } else {
         setMessages(data);
+        scrollToBottom();
       }
     };
 
     loadMessages();
 
-    // Realtime subscription (new messages)
+    // ✅ Realtime subscription for new messages
     const channel = supabase
-      .channel("messages-channel")
+      .channel(`room:${sessionId}`)
       .on(
         "postgres_changes",
         {
@@ -42,13 +48,16 @@ export default function ChatSession() {
           filter: `session_id=eq.${sessionId}`,
         },
         (payload) => {
-          console.log("New message received:", payload.new);
+          console.log("Realtime message:", payload.new);
           setMessages((prev) => [...prev, payload.new]);
+          scrollToBottom();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("Subscription status:", status);
+      });
 
-    // Cleanup on unmount
+    // Cleanup
     return () => {
       supabase.removeChannel(channel);
     };
@@ -77,7 +86,7 @@ export default function ChatSession() {
       <h1 className="text-xl font-bold mb-4">Chat Session: {sessionId}</h1>
 
       <div className="w-full max-w-md bg-white shadow rounded p-4 flex flex-col">
-        <div className="flex-1 overflow-y-auto mb-4">
+        <div className="flex-1 overflow-y-auto mb-4 h-80 border p-2 rounded">
           {messages.length === 0 ? (
             <p className="text-gray-500">No messages yet...</p>
           ) : (
@@ -87,6 +96,7 @@ export default function ChatSession() {
               </p>
             ))
           )}
+          <div ref={messagesEndRef} />
         </div>
 
         <div className="flex space-x-2">
